@@ -9,7 +9,9 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
+	"github.com/stephensulimani/modmail/database"
 	"github.com/stephensulimani/modmail/handlers"
+	"github.com/stephensulimani/modmail/internal"
 	_ "modernc.org/sqlite"
 )
 
@@ -28,17 +30,22 @@ func main() {
 	}
 
 	// Generate Secret Key
-	secret_key := make([]byte, 32)
-	rand.Read(secret_key)
+	internal.SECRET_KEY = make([]byte, 32)
+	rand.Read(internal.SECRET_KEY)
+
+	// Generate Index Key
+	internal.INDEX_KEY = make([]byte, 32)
+	rand.Read(internal.INDEX_KEY)
 
 	// Set up and configure database
 	db, err := sql.Open("sqlite", "file:modmail?mode=memory&cache=shared")
+	// db, err := sql.Open("sqlite", "./modmail.db")
 	if err != nil {
 		fmt.Println("Error opening database: ", err)
 		return
 	}
 
-	err = CreateTables(db)
+	err = database.CreateTables(db)
 	if err != nil {
 		fmt.Println("Table creation failed: ", err)
 		return
@@ -52,11 +59,11 @@ func main() {
 		fmt.Println("Error creating Discord session: ", err)
 		return
 	}
-	discord.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuildMembers
+	discord.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuildMembers | discordgo.IntentsDirectMessages
 
 	discord.AddHandler(handlers.Ready())
 
-	discord.AddHandler(handlers.MessageCreate())
+	discord.AddHandler(handlers.MessageCreate(db))
 
 	err = discord.Open()
 	if err != nil {
@@ -71,32 +78,4 @@ func main() {
 	if err != nil {
 		fmt.Printf("could not close session gracefully: %s\n", err)
 	}
-}
-
-func CreateTables(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS ` + "`tickets`" + `(
-		` + "`id`" + ` INTEGER PRIMARY KEY AUTOINCREMENT,	
-		` + "`user_id`" + ` VARCHAR(255) NOT NULL UNIQUE,
-        ` + "`channel_id`" + ` VARCHAR(255) NOT NULL UNIQUE,
-		` + "`webhook_url`" + ` VARCHAR(255) NOT NULL,
-		` + "`created_at`" + ` DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS ` + "`aliases`" + `(
-		` + "`ticket_id`" + ` INTEGER NOT NULL,
-		` + "`staff_id`" + ` VARCHAR(255) NOT NULL,
-		` + "`alias`" + ` INTEGER NOT NULL,
-        ` + "`created_at`" + ` DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(` + "`ticket_id`" + `) REFERENCES tickets(` + "`id`" + `) ON DELETE CASCADE,
-		PRIMARY KEY(` + "`ticket_id`" + `, ` + "`staff_id`" + `)
-		)
-	`)
-
-	return err
 }
